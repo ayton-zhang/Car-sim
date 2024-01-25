@@ -1,0 +1,13 @@
+name: pnc_course
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+    - numpy
+    - matplotlib
+    - scipy
+    - cvxpy
+    - opencv-python
+
