@@ -37,7 +37,7 @@ class AStarPlanner:
             self.parent_idx = parent_idx
 
         def __str__(self):
-            return str(self.x_idx) + "," + str(self.x_idx) + "," + str(
+            return str(self.x_idx) + "," + str(self.y_idx) + "," + str(
                 self.cost) + "," + str(self.parent_idx)
 
     def search(self, start_x, start_y, goal_x, goal_y):
@@ -58,6 +58,8 @@ class AStarPlanner:
         goal_node = self.Node(*self.convert_coord_to_idx(goal_x, goal_y), 0.0, -1)
 
         # TODO: create open_set and closed set
+        open_set = {}
+        closed_set = {}
 
         # this is the astar algorithm main loop, you should finish it!
         while (len(open_set) > 0):
@@ -100,7 +102,7 @@ class AStarPlanner:
 
     def cal_heuristic_func(self, node1, node2):
         # TODO: implement heuristic function to estimate the cost between node 1 and node 2
-        h_value = 0
+        h_value = math.hypot(node1.x_idx - node2.x_idx, node1.y_idx - node2.y_idx)
         return h_value
 
     def convert_idx_to_coord(self, x_idx, y_idx):
