@@ -60,10 +60,13 @@ class AStarPlanner:
         # TODO: create open_set and closed set
         open_set = {}
         closed_set = {}
+        open_set[self.get_vec_index(start_node)] = start_node
 
         # this is the astar algorithm main loop, you should finish it!
         while (len(open_set) > 0):
             # TODO: 1. pop the node with lowest value of the f function from the open_set, and add it to the closedset
+            cur_node_idx = min(open_set, key=lambda o: open_set[o].cost + self.cal_heuristic_func(goal_node, open_set[o]))
+            cur_node = open_set[cur_node_idx]
 
             # plot cur_node
             if show_animation:
@@ -77,10 +80,31 @@ class AStarPlanner:
                     plt.pause(0.0000001)
             
             # TODO: 2. determine whether the current node is the goal, and if so, stop searching
+            if cur_node.x_idx == goal_node.x_idx and cur_node.y_idx == goal_node.y_idx:
+                print("Find the goal node")
+                break
+
+            # add the current node to the closed set
+            closed_set[self.get_vec_index(cur_node)] = cur_node
+
+            # remove the current node from the open set
+            del open_set[self.get_vec_index(cur_node)]
 
 
             # TODO: 3. expand neighbors of the current node
-            # for i, _ in enumerate(self.motion_model):
+            for i, _ in enumerate(self.motion_model):
+                node = self.Node(cur_node.x_idx + self.motion_model[i][0], cur_node.y_idx + self.motion_model[i][1], cur_node.cost + self.motion_model[i][2], self.get_vec_index(cur_node))
+                if not self.check_node_validity(node):
+                    continue
+                if self.get_vec_index(node) in closed_set:
+                    continue
+                if self.get_vec_index(node) in open_set:
+                    if open_set[self.get_vec_index(node)].cost > node.cost:
+                        open_set[self.get_vec_index(node)].cost = node.cost
+                        open_set[self.get_vec_index(node)].parent_idx = node.parent_idx
+                else:
+                    open_set[self.get_vec_index(node)] = node
+
 
         if len(open_set) == 0:
             print("open_set is empty, can't find path")
@@ -97,8 +121,18 @@ class AStarPlanner:
         path_x, path_y = [goal_x], [goal_y]
 
         # TODO: backtracking from goal node to start node to extract the whole path
+        curret_node = goal_node
+
+        while True:
+            x, y = self.convert_idx_to_coord(curret_node.x_idx, curret_node.y_idx)
+            path_x.append(x)
+            path_y.append(y)
+            if curret_node.parent_idx == -1:
+                break
+            curret_node = closed_set[curret_node.parent_idx]
 
         return path_x, path_y
+
 
     def cal_heuristic_func(self, node1, node2):
         # TODO: implement heuristic function to estimate the cost between node 1 and node 2
@@ -207,7 +241,8 @@ def main():
     min_safety_dist = 1.0  # [m]
 
     # read map
-    image = cv2.imread(str(pathlib.Path.cwd()) + "/maps/" + "map1.png")
+    image = cv2.imread(r"D:\Car-sim\Homework Codes\search_based_planner\maps\map1.png")
+    # image = cv2.imread(str(pathlib.Path.cwd()) + "\\maps\\" + "map1.png")
     # cv2.imshow('image', image)
     # cv2.waitKey(0)
     # cv2.destroyAllWindows()
