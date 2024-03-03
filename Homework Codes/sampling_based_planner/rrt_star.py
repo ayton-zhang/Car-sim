@@ -5,9 +5,10 @@ import sys
 import matplotlib.pyplot as plt
 import cv2
 import pathlib
+import copy
 
 SHOW_SAMPLING_PROCESS = True
-
+random.seed(1)
 class RRTStar:
 
     class Node:
@@ -61,33 +62,120 @@ class RRTStar:
         self.node_list = [self.start]
         for i in range(self.max_iter):
             # TODO: 1. generate random node within the x/y range
+            random_node = self.generate_random_node()
 
             
             # TODO: 2. find the nearest node to random node in the tree
+            nearest_node = min(self.node_list, key=lambda node: math.hypot(node.x - random_node.x, node.y - random_node.y))
 
 
             # TODO: 3. Steer the nearest_node to random node with extend_dist
+            dx = random_node.x - nearest_node.x
+            dy = random_node.y - nearest_node.y
+            d = math.hypot(dx, dy)
+            if d > self.path_resolution:
+                if d < self.extend_dist:
+                    self.extend_dist = d
+                dx_extend = (dx / d) * self.extend_dist
+                dy_extend = (dy / d) * self.extend_dist
+                new_node = self.Node(nearest_node.x + dx_extend, nearest_node.y + dy_extend)
+                new_node.parent = nearest_node
+                new_node.cost = nearest_node.cost + self.extend_dist
+                mid_node = self.generate_path_point(nearest_node, new_node, self.extend_dist, dx_extend, dy_extend)
+                new_node = mid_node
+            if d <= self.path_resolution:
+                new_node = random_node
+                new_node.parent = nearest_node
+                new_node.cost = nearest_node.cost + d
+                new_node.path_x = [nearest_node.x, random_node.x]
+                new_node.path_y = [nearest_node.y, random_node.y]
+            # for i in range(steps):
+            #     new_node.path_x.append(nearest_node.x + self.path_resolution * i)
+            #     new_node.path_y.append(nearest_node.y + self.path_resolution * i)
+            # else:
+            #     new_node = random_node
+            #     new_node.parent = nearest_node
+            #     new_node.cost = nearest_node.cost + d
+            #     self.generate_path_point(new_node, nearest_node, d)
+                # for i in range(steps):
+                #     new_node.path_x.append(nearest_node.x + self.path_resolution * i)
+                #     new_node.path_y.append(nearest_node.y + self.path_resolution * i)
 
-
+            # check if the new node collides with obstacles
             if self.check_collision_with_obs_map(new_node, self.obstacle_map):
                 # TODO: 4. find nodes near the new_node, and choose the parent which maintains 
                 # a minimum-cost path from the start node
-                
+                near_nodes=[]
+                for node in self.node_list:
+                    if math.hypot(node.x - new_node.x, node.y - new_node.y) <= self.near_nodes_dist_threshold:
+                        near_nodes.append(node)
+                min_cost = new_node.cost
+                for node in near_nodes:
+                    newnew_node = self.generate_path_point(node, new_node, math.hypot(node.x - new_node.x, node.y - new_node.y), (new_node.x - node.x), (new_node.y - node.y))
+                    if self.check_collision_with_obs_map(newnew_node, self.obstacle_map):
+                        if node.cost + math.hypot(node.x - newnew_node.x, node.y - newnew_node.y) < min_cost:
+                            newnew_node.cost = node.cost + math.hypot(node.x - newnew_node.x, node.y - newnew_node.y)
+                            min_cost = newnew_node.cost
+                            newnew_node.parent = node
+                new_node = newnew_node
+                self.node_list.append(new_node)
+                self.draw_node_and_edge(new_node)
 
                 # TODO: 5. rewire the tree and draw current node and the edge between it and its parent node
-                
+                for node in near_nodes:
+                    rewire_node = self.generate_path_point(new_node, node, math.hypot(node.x - new_node.x, node.y - new_node.y), (node.x - new_node.x), (node.y - new_node.y))
+                    if self.check_collision_with_obs_map(rewire_node, self.obstacle_map):
+                        if new_node.cost + math.hypot(rewire_node.x - new_node.x, rewire_node.y - new_node.y) < rewire_node.cost:
+                            rewire_node.parent = new_node
+                            rewire_node.cost = new_node.cost + math.hypot(rewire_node.x - new_node.x, rewire_node.y - new_node.y)
+                            node = rewire_node
+                            self.node_list.append(node)
+                            self.draw_node_and_edge(node)
+            
 
             # TODO: 6. check if the tree has expanded to the vicinity of the goal point, if so, select a suitable
             # node directly to connect to the goal, if the edge does not collide with obstacles, the search can 
             # be finished, return the entire path which is extracted by backtracking.
             if ((not self.search_until_max_iter) and new_node):
-                
+                if math.hypot(new_node.x - self.end.x, new_node.y - self.end.y) <= self.extend_dist:
+                    mid_end_node = self.generate_path_point(new_node, self.end, math.hypot(new_node.x - self.end.x, new_node.y - self.end.y), (self.end.x - new_node.x), (self.end.y - new_node.y))
+                    if self.check_collision_with_obs_map(mid_end_node, self.obstacle_map):
+                        mid_end_node.parent = new_node
+                        mid_end_node.cost = new_node.cost + math.hypot(new_node.x - self.end.x, new_node.y - self.end.y)
+                        self.end = mid_end_node
+                        self.node_list.append(self.end)
+                        return self.backtracking(len(self.node_list) - 1)
+
 
         print("reach max iteration")
         # TODO: 7. reach max iteration, backtracking to extract the path between the last node and the start node
+        return self.backtracking(len(self.node_list) - 1)
+
+
+    def generate_path_point(self, from_node, to_node, distance, dx, dy):
+        to_node = copy.deepcopy(to_node)
+        to_node.path_x = [from_node.x]
+        to_node.path_y = [from_node.y]
+        new_node = self.Node(from_node.x, from_node.y)
+        n_expand = math.floor(distance / self.path_resolution)
+
+        for _ in range(n_expand):
+            new_node.x = new_node.x + self.path_resolution * dx / distance
+            new_node.y = new_node.y + self.path_resolution * dy / distance
+            to_node.path_x.append(new_node.x)
+            to_node.path_y.append(new_node.y)
+        
+        return to_node
         
 
-        return None
+    def generate_random_node(self):
+        if random.randint(0, 100) > self.goal_sample_rate:
+            rand_node = self.Node(
+                random.uniform(self.x_min_rand, self.x_max_rand),
+                random.uniform(self.y_min_rand, self.y_max_rand))
+        else:  # goal point sampling
+            rand_node = self.Node(self.end.x, self.end.y)
+        return rand_node
 
 
     def backtracking(self, goal_idx):
@@ -170,7 +258,7 @@ def extract_obstacle_map_list_from_img(binary_img):
 
 def main():
     # read image map
-    image = cv2.imread(str(pathlib.Path.cwd()) + "/maps/" + "map3.png")
+    image = cv2.imread(r'D:\Car-sim\Homework Codes\sampling_based_planner\maps\map3.png')
     # transform to binary image
     binary_img = preprocess_image(image, 127)
     # extract obstacle map from image
