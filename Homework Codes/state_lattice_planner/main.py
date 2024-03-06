@@ -57,11 +57,15 @@ def generate_reference_line_and_boundary():
 def cal_path_cost(path):
     # TODO: calculate cost function: reference attraction cost, smoothness cost, safety cost, ...
     # return the total cost
-    pass
+    J_safe = WEIGHT_SAFETY * is_collision(path.x_list, path.y_list, path.yaw_list, OBSTACLES_X, OBSTACLES_Y)
+    J_smooth = WEIGHT_SMOOTHNESS * sum([math.sqrt(dddl) for dddl in path.dddl_list])
+    J_attractive = WEIGHT_REFERENCE * sum([s for s in path.s_list])
+    return J_safe + J_smooth + J_attractive
 
 def get_optimal_path(path_lattices_map):
     # TODO: return the minimum cost path
-    pass
+    path_key = min(path_lattices_map, key=lambda x: path_lattices_map[x])
+    return path_key
 
 def is_collision(x_list, y_list, yaw_list, obstacle_x_list, obstacle_y_list):
     # TODO: check if the given path(xs, ys, yaws) collides with obstacles
