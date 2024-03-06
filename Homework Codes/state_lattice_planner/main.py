@@ -58,18 +58,44 @@ def cal_path_cost(path):
     # TODO: calculate cost function: reference attraction cost, smoothness cost, safety cost, ...
     # return the total cost
     J_safe = WEIGHT_SAFETY * is_collision(path.x_list, path.y_list, path.yaw_list, OBSTACLES_X, OBSTACLES_Y)
-    J_smooth = WEIGHT_SMOOTHNESS * sum([math.sqrt(dddl) for dddl in path.dddl_list])
-    J_attractive = WEIGHT_REFERENCE * sum([s for s in path.s_list])
+    J_smooth = WEIGHT_SMOOTHNESS * sum([abs(dddl) for dddl in path.dddl_list])
+    J_attractive = WEIGHT_REFERENCE * sum([abs(l) for l in path.l_list])
     return J_safe + J_smooth + J_attractive
 
 def get_optimal_path(path_lattices_map):
     # TODO: return the minimum cost path
+    if len(path_lattices_map) == 0:
+        return None
     path_key = min(path_lattices_map, key=lambda x: path_lattices_map[x])
     return path_key
 
 def is_collision(x_list, y_list, yaw_list, obstacle_x_list, obstacle_y_list):
     # TODO: check if the given path(xs, ys, yaws) collides with obstacles
-    pass
+    # return 1 if collision happens, otherwise return 0
+    for ego_x, ego_y, ego_yaw in zip(x_list, y_list, yaw_list):
+        center_x = ego_x + REAR_AXLE_TO_CENTER * math.cos(ego_yaw)
+        center_y = ego_y + REAR_AXLE_TO_CENTER * math.sin(ego_yaw)
+        if not check_rectangle_collision_with_obstacles(center_x, center_y, ego_yaw, obstacle_x_list, obstacle_y_list, CAR_LENGTH, CAR_WIDTH):
+            return 1000 # collision happens
+    return 0 # no collision
+
+def check_rectangle_collision_with_obstacles(x, y, yaw, obstacle_x_list, obstacle_y_list, length, width):
+    front_safety_dist = length / 2.0 + LON_SAFETY_DISTANCE_M
+    rear_safety_dist = -length / 2.0 - LON_SAFETY_DISTANCE_M
+    left_safety_dist = width / 2.0 + LAT_SAFETY_DISTANCE_M
+    right_safety_dist = -width / 2.0 - LAT_SAFETY_DISTANCE_M
+
+    # transform obstacle to ego vehicle frame
+    rot = rot_mat_2d(yaw)
+    for obs_x, obs_y in zip(obstacle_x_list, obstacle_y_list):
+        delta_x = obs_x - x
+        delta_y = obs_y - y
+        tran_pt = np.stack([delta_x, delta_y]).T @ rot  # need to figure out the mearning of the operation here
+        local_x, local_y = tran_pt[0], tran_pt[1] 
+        if not (local_x > front_safety_dist or local_x < rear_safety_dist or local_y > left_safety_dist or local_y < right_safety_dist):
+            return False 
+    return True
+
 
 if __name__ == "__main__":
   
@@ -81,6 +107,8 @@ if __name__ == "__main__":
             ref_path_x_list,ref_path_y_list, ref_path_yaw_list, boundary_left_dists)
     right_boundary_pt_xs, right_boundary_pt_ys = convert_pt_from_frenet_to_cartesian(
             ref_path_x_list,ref_path_y_list, ref_path_yaw_list, boundary_right_dists)
+    
+    sample_length = ref_path_s_list[-1] * 2 / 3
 
     # initial state
     l_s = 0.0
@@ -94,10 +122,19 @@ if __name__ == "__main__":
         path = Path()
 
         # TODO: 1. generate quintic polynomial path
-
+        solver = QuinticPolynomial(l_s, dl_s, ddl_s, l_e, 0.0, 0.0, sample_length)
+        path.s_list = np.arange(0, sample_length + PATH_INTERVAL_M, PATH_INTERVAL_M)
+        path.l_list = [solver.eval_x(s) for s in path.s_list]
+        path.dl_list = [solver.eval_dx(s) for s in path.s_list]
+        path.ddl_list = [solver.eval_ddx(s) for s in path.s_list]
+        path.dddl_list = [solver.eval_dddx(s) for s in path.s_list]
 
         # TODO: 2. transform current path from frenet frame to cartesian frame.
         # refer to the function "convert_state_from_frenet_to_cartesian" in utils/path_utils.py
+        path.x_list, path.y_list, path.yaw_list, path.curvature_list, _ = convert_state_from_frenet_to_cartesian(ref_path_x_list, ref_path_y_list, ref_path_yaw_list, 
+                                                                                                                 ref_path_kappa_list, path.l_list, path.dl_list, 
+                                                                                                                 path.ddl_list, path.dddl_list)
+
 
         
         # TODO: 3. costing each path
