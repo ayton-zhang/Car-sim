@@ -88,14 +88,69 @@ class PathOptimizer:
 
     def FormulateMatrixP(self):
         # TODO: Construct matrix P for objective function.
+        rows = []
+        cols = []
+        data = []
+
+        # l cost
+        for i in range(self.point_nums):
+            rows.append(i)
+            cols.append(i)
+            data.append(self.w_l)
+
+        # dl cost
+        for i in range(self.point_nums):
+            rows.append(i + self.point_nums)
+            cols.append(i + self.point_nums)
+            data.append(self.w_dl)
+
+        # ddl cost
+        for i in range(self.point_nums):
+            rows.append(i + 2 * self.point_nums)
+            cols.append(i + 2 * self.point_nums)
+            data.append(self.w_ddl)
+
+        # dddl cost
+        for i in range(self.point_nums - 1):
+            rows.append(i + 2 * self.point_nums)
+            cols.append(i + 2 * self.point_nums)
+            data.append(self.w_dddl / self.step_sqr_list[i])
+            
+            rows.append(i + 1 + 2 * self.point_nums)
+            cols.append(i + 1 + 2 * self.point_nums)
+            data.append(self.w_dddl / self.step_sqr_list[i])
+
+            rows.append(i + 1 + 2 * self.point_nums)
+            cols.append(i + 2 * self.point_nums)
+            data.append(-2.0 * self.w_dddl / self.step_sqr_list[i])
+
+        # ref l cost
+        for i in range(self.point_nums):
+            rows.append(i)
+            cols.append(i)
+            data.append(self.w_ref_l)
+
+        for i in range(len(data)):
+            data[i] *= 2.0
+        
+        P = sparse.csc_matrix((data, (rows, cols)), shape=(self.variable_nums, self.variable_nums))
+
         return P
 
     def FormulateVectorq(self):
         # TODO: Construct vector q for objective function.
+        q = np.zeros(self.variable_nums)
+        for i in range(self.point_nums):
+            q[i] = -2.0 * self.w_ref_l * self.ref_l_list[i]
         return q
 
     def FormulateAffineConstraint(self):
         # TODO: Construct matrix A and vector l, u for constraints.
+        # Initial and end state constraints
+        l = []
+        u = []
+        
+
         return A, lb, ub
 
     def Solve(self):
