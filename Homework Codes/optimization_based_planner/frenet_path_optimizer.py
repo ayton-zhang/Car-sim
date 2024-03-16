@@ -149,9 +149,135 @@ class PathOptimizer:
         # Initial and end state constraints
         l = []
         u = []
-        
+        constraint_idx = 0
+        cols = []
+        rows = []
+        data = []
 
-        return A, lb, ub
+        # l boudary constraints
+        for i in range(self.point_nums):
+            rows.append(constraint_idx)
+            cols.append(i)
+            data.append(1.0)
+            l.append(self.l_lower_bound[i])
+            u.append(self.l_upper_bound[i])
+            constraint_idx += 1
+        # dl boudary constraints
+        for i in range(self.point_nums):
+            rows.append(constraint_idx)
+            cols.append(self.point_nums + i)
+            data.append(1.0)
+            l.append(self.dl_lower_bound[i])
+            u.append(self.dl_upper_bound[i])
+            constraint_idx += 1
+        # ddl boudary constraints
+        for i in range(self.point_nums):
+            rows.append(constraint_idx)
+            cols.append(2 * self.point_nums + i)
+            data.append(1.0)
+            l.append(self.ddl_lower_bound[i])
+            u.append(self.ddl_upper_bound[i])
+            constraint_idx += 1
+        # dddl boudary constraints
+        for i in range(self.point_nums - 1):
+            rows.append(constraint_idx)
+            cols.append(2 * self.point_nums + i)
+            data.append(-1)
+            rows.append(constraint_idx)
+            cols.append(2 * self.point_nums + i + 1)
+            data.append(1)
+            l.append(-self.dddl_lower_bound[i] * self.step_list[i])
+            u.append(self.dddl_upper_bound[i] * self.step_list[i])
+            constraint_idx += 1
+
+
+        # initial l state constraints
+        rows.append(constraint_idx)
+        cols.append(0)
+        data.append(1.0)
+        l.append(self.init_state[0] - EPLISON)
+        u.append(self.init_state[0] + EPLISON)
+        constraint_idx += 1
+        # initial dl state constraints
+        rows.append(constraint_idx)
+        cols.append(self.point_nums)
+        data.append(1.0)
+        l.append(self.init_state[1] - EPLISON)
+        u.append(self.init_state[1] + EPLISON)
+        constraint_idx += 1
+        # initial ddl state constraints
+        rows.append(constraint_idx)
+        cols.append(2 * self.point_nums)
+        data.append(1.0)
+        l.append(self.init_state[2] - EPLISON)
+        u.append(self.init_state[2] + EPLISON)
+        constraint_idx += 1
+
+
+        # end l state constraints
+        rows.append(constraint_idx)
+        cols.append(self.point_nums - 1)
+        data.append(1.0)
+        l.append(self.end_state[0] - EPLISON)
+        u.append(self.end_state[0] + EPLISON)
+        constraint_idx += 1
+        # end dl state constraints
+        rows.append(constraint_idx)
+        cols.append(2 * self.point_nums - 1)
+        data.append(1.0)
+        l.append(self.end_state[1] - EPLISON)
+        u.append(self.end_state[1] + EPLISON)
+        constraint_idx += 1
+        # end ddl state constraints
+        rows.append(constraint_idx)
+        cols.append(3 * self.point_nums - 1)
+        data.append(1.0)
+        l.append(self.end_state[2] - EPLISON)
+        u.append(self.end_state[2] + EPLISON)
+        constraint_idx += 1
+
+
+        # dl continuity constraints
+        for i in range(self.point_nums -1):
+            rows.append(constraint_idx)
+            cols.append(self.point_nums + i)
+            data.append(-1)
+            rows.append(constraint_idx)
+            cols.append(self.point_nums + i + 1)
+            data.append(1)
+            rows.append(constraint_idx)
+            cols.append(2 * self.point_nums + i)
+            data.append(-0.5 * self.step_list[i])
+            rows.append(constraint_idx)
+            cols.append(2 * self.point_nums + i + 1)
+            data.append(-0.5 * self.step_list[i])
+            l.append(1e-5)
+            u.append(1e-5)
+            constraint_idx += 1
+        # l continuity constraints
+        for i in range(self.point_nums - 1):
+            rows.append(constraint_idx)
+            cols.append(i)
+            data.append(-1)
+            rows.append(constraint_idx)
+            cols.append(i + 1)
+            data.append(1)
+            rows.append(constraint_idx)
+            cols.append(self.point_nums + i)
+            data.append(-self.step_list[i])
+            rows.append(constraint_idx)
+            cols.append(2 * self.point_nums + i)
+            data.append(-1/3 * self.step_sqr_list[i])
+            rows.append(constraint_idx)
+            cols.append(2 * self.point_nums + i + 1)
+            data.append(-1/6 * self.step_sqr_list[i])
+            l.append(1e-5)
+            u.append(1e-5)
+            constraint_idx += 1
+        
+        A = sparse.csc_matrix((data, (rows, cols)), shape=(constraint_idx, self.variable_nums))
+
+        return A, l, u
 
     def Solve(self):
         # TODO: 1. Construct QP problem (P, q, A, l, u)
@@ -160,15 +286,32 @@ class PathOptimizer:
         P = self.FormulateMatrixP()
         q = self.FormulateVectorq()
 
-        A, lb, ub = self.FormulateAffineConstraint()
+        A, l, u = self.FormulateAffineConstraint()
 
 
         # TODO: 2. Create an OSQP object and solve 
         # please refer to https://osqp.org/docs/examples/setup-and-solve.html
-        
+        osqp_problem = osqp.OSQP()
+        osqp_problem.setup(P, q, A, l, u, polish=True, eps_abs=1e-5, eps_rel=1e-5,
+                            eps_prim_inf=1e-5, eps_dual_inf=1e-5, verbose=True)
+
+        # setting warmstart for l, l', l''
+        var_warm_start = np.array(
+            self.ref_l_list + [0.0 for n in range(2 * self.point_nums)])
+        osqp_problem.warm_start(x=var_warm_start)
+
+        # solve
+        res = osqp_problem.solve()
 
         # TODO: 3. Extract solution from osqp result
-        
+        self.solution_l = res.x[0:self.point_nums]
+        self.solution_dl = res.x[self.point_nums : 2 * self.point_nums]
+        self.solution_ddl = res.x[2 * self.point_nums : 3 * self.point_nums]
+
+        for i in range(self.point_nums - 1):
+            self.solution_dddl.append(
+                (self.solution_ddl[i + 1] - self.solution_ddl[i]) / self.step_list[i])
+        self.solution_dddl.append(0.0)
 
     def GetSolution(self):
         return self.solution_l, self.solution_dl, self.solution_ddl, self.solution_dddl
